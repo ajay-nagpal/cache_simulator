@@ -1,5 +1,9 @@
-use std::env;                      //read command line arguments
-use getopts::Options;             //Cli arguments parsing
+use std::env;                        //read command line arguments
+use getopts::Options;               //Cli arguments parsing
+
+use std::fs::File;                // file handling
+use std::io::{BufReader,BufRead};// buffered reading of trace file
+
 
 /*
 Structure to represent a cache lines
@@ -41,6 +45,106 @@ fn print_msg(){
   println!("invalid cli!");
   println!("required flags: -s <s> -E <E> -b <b> -t <tracefile>");
 }
+
+
+/*
+This function extract the memory address from a trace line.
+expected trace format=>
+operation address, size
+
+function split the trace line into two parts
+1. operation character 
+2. address and size parts
+
+address part is then separated from size parameter and converted 
+from hexadecimal string format into  unsigned 64 bit integer.
+
+This function returns Option<u64>  to avoid failure in process and 
+if anything fails this function returns None so that the caller can
+safely skip the incorrect trace lines.
+*/
+fn extract_address(line:&str)->Option<u64>{
+
+  let parts:Vec<&str>=line.split_whitespace().collect();
+
+  if parts.len()!=2{
+    return None;
+  }
+
+  let adr_part:Vec<&str>=parts[1].split(',').collect();
+
+  if adr_part.len()!=2{
+    return None;
+  }
+
+  let adr_str:&str=adr_part[0];
+
+  let address:u64=match u64::from_str_radix(adr_str,16){
+    Ok(addr)=>addr,
+    Err(_)=>return None,
+  };
+  
+  Some(address)
+}
+
+/*
+This function takes a trace file and a cache as a input.
+reads the trace file line by line.
+for every line:-
+leading and trailing whitespaces removed to simplify parsing.
+empty lines and lines starting with 'I'(Instruction load) are ignored.
+The operation type(M|L|S) is checked to count  how many times the instruction needs cache lookup,
+then accordingly the operation_cache_access_count value is set,
+
+for data load and data store instruction it is one 
+and for data modify instruction it is 2  because it represents 
+a data load followed by a data store .
+
+We skip the process for other fields because trace files may contain several additional fields.
+we extract address from this address string using extract_address function.
+*/
+fn operate_flags(trace_file:&str,cache:&mut Cache){
+  let file=match File::open(trace_file){
+    Ok(file)=>file,
+    Err(err)=>{
+      println!("failed to open the file: {}",err);
+      std::process::exit(1);
+    }  
+  };
+
+  let reader=BufReader::new(file);
+
+  for line in reader.lines(){
+    let address_str=match line{
+      Ok(v)=>v,
+      Err(_)=>continue,
+    };
+
+    let trimmed_address_str=address_str.trim();
+
+    if trimmed_address_str.starts_with('I') || trimmed_address_str.is_empty(){
+      continue;
+    }
+
+    let operation_cache_access_count= 
+    if trimmed_address_str.starts_with('M') {
+      2
+    } 
+    else if trimmed_address_str.starts_with('L') || trimmed_address_str.starts_with('S'){
+      1
+    }
+    else{
+      continue;
+    };
+
+    let address:u64=match extract_address(&trimmed_address_str){
+      Some(addr)=>addr,
+      None=>continue,
+    };
+
+  }
+}
+
 
 /*
 This is the entry point of the simulator.
@@ -129,4 +233,7 @@ pub fn main() {
 
     global_counter:0,
   };
+
+  operate_flags(trace_file.as_str(),&mut cache);
+
 }
