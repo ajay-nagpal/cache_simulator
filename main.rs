@@ -1,12 +1,45 @@
-use std::env;                 //read command line arguments
-use getopts::Options;              //Cli arguments parsing
+use std::env;                      //read command line arguments
+use getopts::Options;             //Cli arguments parsing
+
+/*
+Structure to represent a cache lines
+*/
+struct Line{
+  contain_block:bool,
+  tag:u64,
+  last_used:u64,
+}
+
+/*
+Structure to represent a cache set
+each set contains multiple cache lines
+*/
+struct Set{
+  lines:Vec<Line>,
+}
+
+/*
+Structure representing the cache
+stores various cache parameters
+*/
+struct Cache{
+  sets:Vec<Set>,//collection of cache set
+  s:usize,     // number of set index bits
+  b:usize,    // number of block offset bits
+
+  hits:u64,
+  miss:u64,
+  evicts:u64,
+
+  global_counter:u64,//global counter for LRU replacement
+}
 
 /*
 Function to print invalid format message when entered  cli is invalid
 */
 fn print_msg(){
   println!("invalid cli!");
-  println!("required flags in order: -s <s> -E <E> -b <b> -t <tracefile>");
+  println!("required flags: -s <s> -E <E> -b <b> -t <tracefile>");
 }
 
 /*
@@ -65,5 +98,35 @@ pub fn main() {
       print_msg();
       return;
     }
+  };
+
+  let trace_file:String=t.unwrap();
+
+  let mut sets:Vec<Set>=Vec::new();
+  let total_sets:usize=1<<s;
+
+  for _ in 0..total_sets{
+    let mut lines:Vec<Line>=Vec::new();
+
+    for _ in 0..e{
+      lines.push(Line{
+        contain_block:false,
+        tag:0,
+        last_used:0,
+      });
+    }
+    sets.push(Set{lines});
+  }
+
+  let mut cache=Cache{
+    sets,
+    s:s,
+    b:b,
+    // _e:e,
+    hits:0,
+    miss:0,
+    evicts:0,
+
+    global_counter:0,
   };
 }
