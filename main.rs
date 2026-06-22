@@ -39,12 +39,143 @@ struct Cache{
 }
 
 /*
+Enums HIT , MISS and FULL
+representing the cache lookup result
+*/
+#[derive(PartialEq)] // attribute to allow enum values to be comared using == or !=
+enum SearchResult{
+  HIT,
+  MISS,
+  FULL,
+}
+
+/*
 Function to print invalid format message when entered  cli is invalid
 */
 fn print_msg(){
   println!("invalid cli!");
   println!("required flags: -s <s> -E <E> -b <b> -t <tracefile>");
 }
+
+
+/*
+is_full is used for checking if there is any line in a 
+particular set is available for storing a block logically.
+if for any line in a particular set, contain_block is false
+then line in that set is free otherwise the set is considered full.
+*/
+fn is_full(set_index:usize,cache:&mut Cache)->bool{
+  //use set index to determine set
+  //search for free line in that set
+
+  let set:& Set=& cache.sets[set_index];
+  
+  for line in &set.lines{
+    if ! line.contain_block {
+      return false;
+    }
+  }
+  true 
+}
+
+/*
+This function checks whether the memory address access results in 
+a cache HIT, it iterate through the lines of a particular set selected using set_index parameter
+and compared the logically placed tag with the tag of the requested address.
+If a match is found and line contains the block , then the function returns true and
+updates the LRU placement policy related information and increase the
+cache's global_counter for the next use.
+*/
+fn is_hit(tag:u64,set_index:usize,cache:&mut Cache)->bool{
+  //use set index to determine set
+  //search in lines of that set
+
+  let set:&mut Set=&mut cache.sets[set_index];
+  let lines:&mut Vec<Line>=&mut set.lines;
+
+  for line in lines{
+    if line.contain_block && line.tag==tag{
+      line.last_used=cache.global_counter;
+      cache.global_counter+=1;
+      return true;
+    }
+  }
+  false 
+}
+
+/*
+This function coordinates with is_hit and is_full functions to determine
+whether an address lookup results in a hit or miss with available or
+miss requiring eviction i.e full.
+The function returns enums HIT, MISS, FULL to indicate the result.
+*/
+fn check_cache(tag:u64,set_index:usize,cache:&mut Cache)->SearchResult{
+  if is_hit(tag,set_index,cache){
+    return SearchResult::HIT;
+  }
+  if is_full(set_index,cache){
+    return SearchResult::FULL;
+  }
+  SearchResult::MISS
+}
+
+/*
+The function takes a memory address,number of set index bits s and
+number of block offset bits b as arguments and calculate the 
+set index and tag using bit masks and bit operations.
+
+*/
+fn parse_address(address:u64, s:usize, b:usize)->(u64,usize){
+  //remove the block offset bits and calculate shifted address
+  let shifted_address=address>>b;
+  
+  //mask for the set index: s lower bits set to 1
+  let set_index_mask=(1<<s)-1;
+
+  //extract the set index(next s bits)
+  let set_index=(shifted_address & set_index_mask) as usize;
+
+  //everything remaining after shifting by s is the tag
+  let tag=shifted_address>>s;
+
+  (tag,set_index)
+}
+
+/*
+operate_cache function take an address, a cache and a instruction counter to 
+count how many times a address lookup for that instruction should happen in a cache.
+this function uses the check_cache function to determine  whether the address is in the cache.
+
+if the address is found the function increment the hit count,
+if the address is not found and an empty spot exists in the set, 
+then the function logically insert that block into the cache
+to make it appear that the address is into the cache 
+and increment the miss count.
+
+if the address is not found and set is full, the function calls the evict function
+to evict a block from a line from a particular set selected using set_index
+and  increments the eviction count and the miss count.
+Then the function logically insert that block into the cache
+to make it appear that the address is inserted into the cache.
+*/
+fn operate_cache(address:u64, cache: & mut Cache, loop_counter:usize){
+  let (tag,set_index)=parse_address(address,cache.s,cache.b);
+
+  for _ in 0..loop_counter{
+    let result:SearchResult=check_cache(tag,set_index,cache);
+
+    if result==SearchResult::HIT{
+      cache.hits+=1;
+    }
+    else if result==SearchResult::MISS{
+      cache.miss+=1;
+    }
+    else{
+      cache.miss+=1;
+      cache.evicts+=1;
+    }
+  }
+} 
 
 
 /*
@@ -141,7 +272,8 @@ fn operate_flags(trace_file:&str,cache:&mut Cache){
       Some(addr)=>addr,
       None=>continue,
     };
-
+        
+    operate_cache(address,cache,operation_cache_access_count);
   }
 }
 
