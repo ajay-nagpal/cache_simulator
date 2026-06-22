@@ -57,6 +57,54 @@ fn print_msg(){
   println!("required flags: -s <s> -E <E> -b <b> -t <tracefile>");
 }
 
+/*
+The evict function removes a logically placed block from a line of a 
+particular set when it is full.
+The line selected for the eviction is the one with the smallest last_used
+parameter value, corresponding to the least recently used replacement policy.
+After eviction the line is reset so that it can be reused. 
+*/
+fn evict(set_index:usize,cache:&mut Cache){
+  let mut lru_min_time=u64::max_value();
+  let mut lru_line_ind:usize=0;
+
+  let set:&mut Set=&mut cache.sets[set_index];
+
+  for (index,line) in set.lines.iter().enumerate(){
+    if line.last_used<lru_min_time{
+      lru_min_time=line.last_used;
+      lru_line_ind=index;
+    }
+  }
+
+  let target=&mut set.lines[lru_line_ind];
+  
+  target.contain_block=false;
+  target.tag=0;
+  target.last_used=0;
+}
+
+/*
+The insert function logically places a new block into 
+first available free line of a particular set(selected using set index)
+and updates the Line structure parameters accordingly and also
+update the cache's global counter for the next insertion.
+*/
+fn insert(tag:u64, set_index:usize,cache:&mut Cache){
+  let set:&mut Set=&mut cache.sets[set_index];
+
+  for line in set.lines.iter_mut(){
+    if !line.contain_block{
+      line.contain_block=true;
+      line.tag=tag;
+
+      line.last_used=cache.global_counter;
+      cache.global_counter+=1;
+
+      return;
+    }
+  }
+}
 
 /*
 is_full is used for checking if there is any line in a 
@@ -169,10 +217,13 @@ fn operate_cache(address:u64, cache: & mut Cache, loop_counter:usize){
     }
     else if result==SearchResult::MISS{
       cache.miss+=1;
+      insert(tag,set_index,cache);
     }
     else{
       cache.miss+=1;
       cache.evicts+=1;
+      evict(set_index,cache);
+      insert(tag,set_index,cache);
     }
   }
 } 
@@ -233,6 +284,8 @@ a data load followed by a data store .
 
 We skip the process for other fields because trace files may contain several additional fields.
 we extract address from this address string using extract_address function.
+
+operate_flags function calls operate_cache function for each memory access.
 */
 fn operate_flags(trace_file:&str,cache:&mut Cache){
   let file=match File::open(trace_file){
@@ -367,5 +420,5 @@ pub fn main() {
   };
 
   operate_flags(trace_file.as_str(),&mut cache);
-
+  println!("hits:{} misses:{} evictions:{}",cache.hits,cache.miss,cache.evicts);
 }
