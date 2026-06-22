@@ -16,7 +16,7 @@ Consider all three levels of cache memory as a single unit.
 Tracefile will always contain memory accesses in valid format
 operation address, size. example :"M 7ff000384,4"
 
-Valid flags :  -s <s> -E <E> -b <b> -t <tracefile>
+Valid flags : `-s <s> -E <E> -b <b> -t <tracefile>`
 
 The trace files may contain several additional fields, but we are only using memory addresses.
 The values of s, E, and b are assumed to be valid. Example: s,E and b cannot be zero, also s+b should be less than 64
